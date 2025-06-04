@@ -6,7 +6,7 @@
 /*   By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/07 19:15:40 by asinsard          #+#    #+#             */
-/*   Updated: 2025/05/27 18:07:12 by oelleaum         ###   ########lyon.fr   */
+/*   Updated: 2025/06/04 16:46:20 by asinsard         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -47,7 +47,7 @@ static void	display_valid(t_token *node, int i, char **arg, const char **tok)
 			BOLD_PURPLE, tok[node->token], BOLD_BLUE,
 			BOLD_GREEN, node->error, BOLD_BLUE, STOP_COLOR);
 	}
-	if (node->group)
+	if (node && node->group)
 		display_group(node->group);
 }
 
@@ -73,7 +73,7 @@ static void	print_token(t_token *head, const char **tab, int i)
 		head = head->next;
 		i++;
 	}
-	if (head->token != NO_TOKEN)
+	if (head && head->token != NO_TOKEN)
 		display_valid(head, i, head->content, tab);
 	else
 		display_unvalid(i, head);

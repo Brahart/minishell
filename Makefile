@@ -6,7 +6,7 @@
 #    By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2025/04/01 17:29:24 by oelleaum          #+#    #+#              #
-#    Updated: 2025/06/04 00:16:26 by asinsard         ###   ########lyon.fr    #
+#    Updated: 2025/06/04 17:12:12 by asinsard         ###   ########lyon.fr    #
 #                                                                              #
 # **************************************************************************** #
 
@@ -78,6 +78,7 @@ SRC					=	main.c \
 						handle_cmd_and_path.c \
 						handle_utils.c \
 						join_token.c \
+						new_parse_utils.c \
 						new_parse.c \
 						settings_syntax_error.c \
 						syntax_error_utils.c \
