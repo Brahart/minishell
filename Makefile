@@ -6,7 +6,7 @@
 #    By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2025/04/01 17:29:24 by oelleaum          #+#    #+#              #
-#    Updated: 2025/06/04 23:44:37 by asinsard         ###   ########lyon.fr    #
+#    Updated: 2025/06/05 12:39:45 by asinsard         ###   ########lyon.fr    #
 #                                                                              #
 # **************************************************************************** #
 
@@ -153,13 +153,14 @@ DEPS				=	$(SRC:%.c=$(OBJ_DIR)%.d)
 OBJ					=	$(SRC:%.c=$(OBJ_DIR)%.o)
 OBJ_DIR				=	.objs/
 
-$(OBJ_DIR)%.o:%.c $(LIB_LIBFT) Makefile
+
+all: lib $(NAME)
+
+$(OBJ_DIR)%.o:%.c Makefile
 	@mkdir -p $(@D) 
 	@echo "$(BOLD_YELLOW)Compilling" $@ "$(BOLD_PURPLE)"
 	@$(CC) $(FLAGS) -c $< -o $@
 	@echo -n "$(STOP_COLOR)"
-
-all: lib $(NAME)
 
 debug:
 	@echo "				$(BOLD_BLUE)DEBUG"
