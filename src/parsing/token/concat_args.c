@@ -6,7 +6,7 @@
 /*   By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/09 04:50:03 by asinsard          #+#    #+#             */
-/*   Updated: 2025/05/09 22:38:15 by asinsard         ###   ########lyon.fr   */
+/*   Updated: 2025/06/05 00:12:13 by asinsard         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -15,50 +15,32 @@
 #include "quote.h"
 #include "expand.h"
 #include "structs.h"
+#include "wildcard.h"
 #include <stdlib.h>
+#include <errno.h>
 
-static char	**cpy_tab(char **dest, char **src, int index)
+bool	is_same_family(t_token *node)
 {
-	int		i;
-	int		len;
+	t_token	*next_node;
 
-	len = ft_tab_len(src);
-	i = 0;
-	while (i < len)
+	next_node = node->next;
+	if (next_node && (next_node->token == APPEND
+			|| next_node->token == HD
+			|| next_node->token == R_IN
+			|| next_node->token == TRUNC))
+		next_node = next_node->next;
+	if ((node->token == BUILT_IN) || (node->token == CMD))
 	{
-		dest[index] = ft_strdup(src[i]);
-		if (!dest[index])
+		if (next_node)
 		{
-			free_tab(dest);
-			return (NULL);
-		}
-		index++;
-		i++;
-	}
-	return (dest);
-}
-
-static bool	is_same_family(t_token *node)
-{
-	if ((node->token == APPEND)
-		|| (node->token == HD)
-		|| (node->token == R_IN) || (node->token == TRUNC))
-	{
-		if (node->next && node->next->token != APPEND
-			&& node->next->token != HD
-			&& node->next->token != R_IN && node->next->token != TRUNC)
-			return (true);
-	}
-	else if ((node->token == BUILT_IN) || (node->token == CMD))
-	{
-		if (node->next)
-		{
-			if ((node->next->error != 0) || (node->next->token == CMD)
-				|| (node->next->token == D_QUOTE)
-				|| (node->next->token == S_QUOTE)
-				|| (node->next->token == EXPAND)
-				|| (node->next->token == DIREC)
-				|| (node->next->token == FLE))
+			if ((next_node->error != 0) || (next_node->token == CMD)
+				|| (next_node->token == D_QUOTE)
+				|| (next_node->token == S_QUOTE)
+				|| (next_node->token == EXPAND)
+				|| (next_node->token == DIREC)
+				|| (next_node->token == FLE)
+				|| (next_node->token == WILDCARD)
+				|| (next_node->token == ARG))
 				return (true);
 		}
 	}
@@ -75,63 +57,102 @@ static char	**join_node_content(t_token *node, char **old, char **new)
 	len_new = ft_tab_len(new);
 	res = malloc(sizeof(char *) * (len_old + len_new + 1));
 	if (!res)
-		free_parse(node,
-			"Malloc failed in function 'join_node_content'", MEM_ALLOC);
-	res = cpy_tab(res, old, 0);
+	{
+		errno = MEM_ALLOC;
+		free_parse(node);
+		return (NULL);
+	}
+	res = copy_tab(node, res, old, 0);
 	if (!res)
-		free_parse(node, "Malloc failed in function 'cpy_tab'", MEM_ALLOC);
-	res = cpy_tab(res, new, len_old);
+		return (NULL);
+	res = copy_tab(node, res, new, len_old);
 	if (!res)
-		free_parse(node, "Malloc failed in function 'cpy_tab'", MEM_ALLOC);
+		return (NULL);
 	res[len_new + len_old] = NULL;
 	return (res);
 }
 
-static void	change_node(t_token **node)
+void	handle_change_node(t_token **node, bool flag)
 {
 	t_token	*next_node;
 	char	**new_content;
+	bool	is_not_redir;
 
+	is_not_redir = false;
 	next_node = (*node)->next;
+	if (next_node && (next_node->token == APPEND
+			|| next_node->token == HD
+			|| next_node->token == R_IN
+			|| next_node->token == TRUNC))
+	{
+		next_node = next_node->next;
+		is_not_redir = true;
+	}
 	if (!next_node)
 		return ;
-	new_content = join_node_content(*node,
-			(*node)->content, next_node->content);
+	if (flag)
+		new_content = join_node_content(*node,
+				(*node)->content, next_node->content);
+	else
+		new_content = join_content(*node,
+				(*node)->content, next_node->content);
 	if (!new_content)
-		free_parse(*node, "Malloc failed in function 'change_node'", MEM_ALLOC);
-	free_tab((*node)->content);
-	(*node)->content = new_content;
-	(*node)->next = next_node->next;
-	if ((*node)->next)
-		(*node)->next->prev = *node;
-	if (next_node->error == LITERAL_EXPAND)
-		(*node)->error = LITERAL_EXPAND;
-	free_tab(next_node->content);
-	free(next_node);
-	if (((*node)->token == APPEND)
-		|| ((*node)->token == HD)
-		|| ((*node)->token == R_IN) || ((*node)->token == TRUNC))
-		*node = (*node)->next;
+		return ;
+	change_node(node, next_node, new_content, is_not_redir);
 }
 
-void	concat_args(t_token **head, t_var *list_env, char **envp)
+bool	handle_expand_and_join(t_token **head, t_var *list_env,
+								t_lists *lists, bool flag)
+{
+	if (flag)
+	{
+		if (init_expand(head, list_env, lists))
+		{
+			if (errno == MEM_ALLOC)
+			{
+				free_parse(*head);
+				return (false);
+			}
+			if (!parse_again(head, list_env, &flag))
+			{
+				free_parse(*head);
+				errno = MEM_ALLOC;
+				return (false);
+			}
+		}
+	}
+	if (join_token(head))
+		assign_token(head, list_env, true);
+	delete_space_node(head);
+	if (!handle_wildcard(head, flag))
+		return (false);
+	return (true);
+}
+
+bool	concat_args(t_token **head, t_var *list_env, bool flag, t_lists *lists)
 {
 	t_token	*tmp;
 
-	if (!*head)
-		return ;
-	if (init_expand(head, list_env))
-		assign_token(head, envp, list_env, true);
-	delete_space_node(head);
-	tmp = *head;
-	while (tmp)
+	if (!head || !*head)
+		return (true);
+	if (!handle_expand_and_join(head, list_env, lists, flag))
 	{
-		if (tmp->token == D_QUOTE || tmp->token == S_QUOTE)
-			tmp->error = SUCCESS;
+		errno = MEM_ALLOC;
+		return (false);
+	}
+	tmp = *head;
+	errno = SUCCESS;
+	change_redir(&tmp);
+	tmp = *head;
+	while (tmp && errno != MEM_ALLOC)
+	{
 		if (is_same_family(tmp))
-			change_node(&tmp);
+			handle_change_node(&tmp, true);
 		else
 			tmp = tmp->next;
 	}
 	check_syntax_error(head);
+	if (errno == MEM_ALLOC)
+		return (false);
+	return (true);
 }

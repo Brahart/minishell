@@ -1,12 +1,12 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   pipe.c                                             :+:      :+:    :+:   */
+/*   pipe_utils.c                                       :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
 /*   By: oelleaum <oelleaum@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/20 14:33:31 by oelleaum          #+#    #+#             */
-/*   Updated: 2025/04/20 17:37:38 by oelleaum         ###   ########lyon.fr   */
+/*   Updated: 2025/05/26 18:39:56 by oelleaum         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,45 +14,18 @@
 #include "structs.h"
 #include <unistd.h>
 
-/* int	wait_children(pid_t last_child, pid_t first_child) */
-/* { */
-/* 	int		status; */
-/* 	int		exit_code; */
-/**/
-/* 	exit_code = EXIT_SUCCESS; */
-/* 	waitpid(first_child, &status, 0); */
-/* 	waitpid(last_child, &status, 0); */
-/* 	if (WIFEXITED(status)) */
-/* 		exit_code = WEXITSTATUS(status); */
-/* 	else if (WIFSIGNALED(status)) */
-/* 		exit_code = 128 + WTERMSIG(status); */
-/* 	if (exit_code == EXIT_SUCCESS && WIFEXITED(status)) */
-/* 		exit_code = WEXITSTATUS(status); */
-/* 	else if (exit_code == EXIT_SUCCESS && WIFSIGNALED(status)) */
-/* 		exit_code = 128 + WTERMSIG(status); */
-/*   else if (WTERMSIG(status) == SIGINT) */
-/*       write(STDOUT_FILENO, "\n", 1); */
-/* 	return (exit_code); */
-/* } */
-/**/
-int	wait_children(pid_t last_child, pid_t first_child)
+int	wait_children(pid_t last_child)
 {
 	int		status;
 	int		last_status;
-	int		first_status;
-	pid_t	wpid;
-	int	last_child_done;
-	int	first_child_done;
+	pid_t	pid;
 
 	last_status = 0;
-	first_status = 0;
-	last_child_done = 0;
-	first_child_done = 0;
-	while ((wpid = waitpid(-1, &status, 0)) > 0)
+	pid = waitpid(-1, &status, 0);
+	while (pid > 0)
 	{
-		if (wpid == last_child)
+		if (pid == last_child)
 		{
-			last_child_done = 1;
 			if (WIFEXITED(status))
 				last_status = WEXITSTATUS(status);
 			else if (WIFSIGNALED(status))
@@ -60,18 +33,11 @@ int	wait_children(pid_t last_child, pid_t first_child)
 				last_status = 128 + WTERMSIG(status);
 				if (WTERMSIG(status) == SIGINT)
 					write(STDOUT_FILENO, "\n", 1);
-				if (WTERMSIG(status) == SIGQUIT)
+				else if (WTERMSIG(status) == SIGQUIT)
 					write(STDOUT_FILENO, "Quit (core dumped)\n", 19);
 			}
 		}
-		else if (wpid == first_child)
-		{
-			first_child_done = 1;
-			if (WIFEXITED(status))
-				first_status = WEXITSTATUS(status);
-			else if (WIFSIGNALED(status))
-				first_status = 128 + WTERMSIG(status);
-		}
+		pid = waitpid(-1, &status, 0);
 	}
 	return (last_status);
 }
@@ -84,9 +50,7 @@ int	add_pipe(int fd[2], t_pipe **pipes)
 		return (-1);
 	new_pipe = malloc(sizeof(t_pipe));
 	if (!new_pipe)
-	{
-		// error
-	}
+		return (-1);
 	if (pipes && *pipes)
 		new_pipe->next = *pipes;
 	else
@@ -118,9 +82,20 @@ int	free_pipes(t_pipe **pipes)
 
 int	close_origin_fds(int origin_fds[2])
 {
-	close(origin_fds[0]);
-	origin_fds[0] = -1;
-	close(origin_fds[1]);
-	origin_fds[1] = -1;
+	if (origin_fds[0] > 0)
+	{
+		if (close(origin_fds[0]) == -1)
+		{
+			close(origin_fds[1]);
+			return (-1);
+		}
+		origin_fds[0] = -1;
+	}
+	if (origin_fds[1] > 0)
+	{
+		if (close(origin_fds[1]) == -1)
+			return (-1);
+		origin_fds[1] = -1;
+	}
 	return (0);
 }

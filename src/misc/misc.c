@@ -3,126 +3,107 @@
 /*                                                        :::      ::::::::   */
 /*   misc.c                                             :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: oelleaum <oelleaum@student.42.fr>          +#+  +:+       +#+        */
+/*   By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/20 17:58:12 by oelleaum          #+#    #+#             */
-/*   Updated: 2025/04/20 18:01:02 by oelleaum         ###   ########lyon.fr   */
+/*   Updated: 2025/06/03 23:48:05 by asinsard         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "structs.h"
+#include "env_utils.h"
 #include "libft.h"
-#include "utils.h"
+#include "structs.h"
+#include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
 
-char **lst_to_array(t_var **env)
+int	dup_origins_fds(int origin_fds[2])
 {
-    t_var *tmp;
-    char **array;
-    int i;
-    int count = 0;
-    char *s;
-    char *temp;
-
-    tmp = *env;
-    while (tmp && ++count)
-        tmp = tmp->next;
-    array = malloc(sizeof(char *) * (count + 1));
-    if (!array)
-        return NULL;
-    tmp = *env;
-    i = 0;
-    while (tmp)
-    {
-        if (tmp->value)
-        {
-            s = ft_strjoin(tmp->key, "=");
-            temp = s;
-            array[i] = ft_strjoin(s, tmp->value);
-            free(temp);
-        }
-        else
-            array[i] = ft_strdup(tmp->key);
-        
-        if (!array[i])
-        {
-            while (i-- > 0)
-                free(array[i]);
-            free(array);
-            return NULL;
-        }
-        i++;
-        tmp = tmp->next;
-    }
-    array[i] = NULL;
-    return array;
-}
-
-int	compare_keys(char *key1, char *key2)
-{
-	char	*longest_key;
-
-	if (ft_strlen(key1) > ft_strlen(key2))
-		longest_key = key1;
-	else
-		longest_key = key2;
-	return (ft_strncmp(key1, key2, ft_strlen(longest_key)));
-}
-
-int	sort_list(t_var **l)
-{
-	t_var	*tmp;
-	int		sorted;
-
-	sorted = 0;
-	tmp = *l;
-	if (!tmp)
-		return (1);
-	while (sorted == 0)
+	origin_fds[0] = dup(STDIN_FILENO);
+	if (origin_fds[0] == -1)
 	{
-		sorted = 1;
-		tmp = *l;
-		while (tmp->next)
-		{
-			if (compare_keys(tmp->key, tmp->next->key) > 0)
-			{
-				sorted = 0;
-				swap_nodes(tmp, tmp->next);
-			}
-			tmp = tmp->next;
-		}
+		return (-1);
+	}
+	origin_fds[1] = dup(STDOUT_FILENO);
+	if (origin_fds[1] == -1)
+	{
+		return (-1);
 	}
 	return (0);
 }
 
-int	free_array(char **array)
+int	node_to_str(t_var *tmp, char **array, int i)
+{
+	char	*s;
+	char	*temp;
+
+	if (tmp->value)
+	{
+		s = ft_strjoin(tmp->key, "=");
+		if (errno == ENOMEM)
+			return (errno);
+		temp = s;
+		array[i] = ft_strjoin(s, tmp->value);
+		free(temp);
+	}
+	else
+		array[i] = ft_strdup(tmp->key);
+	if (!array[i])
+	{
+		while (i-- > 0)
+			free(array[i]);
+		free(array);
+		return (ENOMEM);
+	}
+	return (0);
+}
+
+char	**lst_to_array(t_var **env)
+{
+	t_var	*tmp;
+	char	**array;
+	int		i;
+	int		count;
+
+	count = 0;
+	tmp = *env;
+	while (tmp && ++count)
+		tmp = tmp->next;
+	array = malloc(sizeof(char *) * (count + 1));
+	if (!array)
+		return (NULL);
+	tmp = *env;
+	i = 0;
+	while (tmp)
+	{
+		node_to_str(tmp, array, i);
+		if (errno == ENOMEM)
+			return (NULL);
+		i++;
+		tmp = tmp->next;
+	}
+	array[i] = NULL;
+	return (array);
+}
+
+int	array_size(char **array)
 {
 	int	i;
 
 	i = 0;
-	while (array[i])
-	{
-		free(array[i]);
+	while (array && array[i])
 		i++;
-	}
-	free(array);
-	return (0);
+	return (i);
 }
 
-/* int exec_here_docs(t_tree *ast) */
-/* { */
-/*     (void)ast; */
-/* 	// */
-/* 	return (0); */
-/* } */
-/**/
-/* int find_here_docs(t_tree **ast) */
-/* { */
-/* 	if ((*ast)->token->token == HD) */
-/* 		return (1); */
-/* 	else if ((*ast)->left) */
-/* 		return (exec_here_docs((*ast)->left)); */
-/* 	else if ((*ast)->right) */
-/* 		return (exec_here_docs((*ast)->right)); */
-/* 	return (0); */
-/* } */
+int	is_interactive_mode(void)
+{
+	if (!isatty(0) || !isatty(1))
+	{
+		if (!isatty(1))
+			ft_putstr_fd(
+				"Minishell does not support non-interactive mode\n", 2);
+		exit(0);
+	}
+	return (0);
+}

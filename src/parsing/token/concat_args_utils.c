@@ -6,18 +6,88 @@
 /*   By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/28 12:44:43 by asinsard          #+#    #+#             */
-/*   Updated: 2025/05/09 22:45:26 by asinsard         ###   ########lyon.fr   */
+/*   Updated: 2025/06/04 00:14:00 by asinsard         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "list.h"
 #include "libft.h"
+#include "token.h"
+#include "quote.h"
+#include "tree.h"
+#include <errno.h>
 #include <stdlib.h>
 
-int	is_valid_prev(t_token *prev)
+void	change_redir(t_token **head)
+{
+	t_token	*tmp;
+
+	tmp = *head;
+	while (tmp && errno != MEM_ALLOC)
+	{
+		if ((tmp->token == R_IN || tmp->token == HD
+				|| tmp->token == APPEND || tmp->token == TRUNC)
+			&& is_same_family_redir(tmp))
+			handle_change_node(&tmp, true);
+		else
+			tmp = tmp->next;
+	}
+}
+
+bool	is_same_family_redir(t_token *node)
+{
+	if ((node->token == APPEND)
+		|| (node->token == HD)
+		|| (node->token == R_IN) || (node->token == TRUNC))
+	{
+		if (!node->content[1] && node->next
+			&& node->next->token != APPEND && node->next->token != HD
+			&& node->next->token != R_IN && node->next->token != TRUNC)
+			return (true);
+	}
+	return (false);
+}
+
+void	change_node(t_token **node, t_token *next_node,
+						char **new_content, bool flag)
+{
+	free_tab((*node)->content);
+	(*node)->content = new_content;
+	if (flag)
+	{
+		(*node)->next->next = next_node->next;
+		if ((*node)->next->next)
+			(*node)->next->next->prev = (*node)->next;
+		free_token(&next_node);
+	}
+	else
+	{
+		(*node)->next = next_node->next;
+		if ((*node)->next)
+			(*node)->next->prev = *node;
+		free_tab(next_node->content);
+		if (next_node->curr_dir)
+			free(next_node->curr_dir);
+		free(next_node);
+		if ((*node)->token == APPEND
+			|| (*node)->token == HD
+			|| (*node)->token == R_IN || (*node)->token == TRUNC)
+			*node = (*node)->next;
+	}
+}
+
+bool	is_valid_prev(t_token *prev)
 {
 	if (!prev)
-		return (1);
+		return (true);
+	if (prev->token == NO_TOKEN)
+	{
+		if (prev->prev && prev->prev->token == SPACE)
+		{
+			if (prev->prev->prev && prev->prev->prev->token == HD)
+				return (true);
+		}
+	}
 	if (prev->token == SPACE)
 		return (is_valid_prev(prev->prev));
 	if ((prev->token == PIPE
@@ -27,11 +97,11 @@ int	is_valid_prev(t_token *prev)
 			|| prev->token == L_PARENTHESIS
 			|| prev->token == DIREC
 			|| prev->token == FLE))
-		return (1);
-	return (0);
+		return (true);
+	return (false);
 }
 
-void	handle_is_command(t_token *node, char *cmd_w_path)
+void	handle_is_command(t_token *node, char *cmd_w_path, bool flag)
 {
 	if (cmd_w_path && (node->error == SUCCESS || node->error == QUOTE))
 	{
@@ -48,72 +118,8 @@ void	handle_is_command(t_token *node, char *cmd_w_path)
 			node->error = CMD_NOT_FOUND;
 			return ;
 		}
-		replace_tab(&node, cmd_w_path); //exec : fix l'absence de path
+		if (flag)
+			replace_tab(&node, cmd_w_path);
 		node->token = CMD;
-	}
-}
-
-static void	case_of_directory_error(t_token **node)
-{
-	int	len;
-
-	len = ft_strlen((*node)->content[0]);
-	if ((*node)->content[0][len - 1] == '/')
-		(*node)->error = IS_A_DIR;
-	else
-		(*node)->error = CMD_NOT_FOUND;
-}
-
-static t_token	*set_syntax_error(t_token *node)
-{
-	t_token	*head;
-	char	*operator;
-	char	*tmp;
-	char	*new_content;
-
-	operator = ft_strdup(node->content[0]);
-	if (!operator)
-		return (NULL);
-	free_parse(node, NULL, 0);
-	tmp = ft_strjoin("syntax error near unexpected token `", operator);
-	free(operator);
-	if (!tmp)
-		return (NULL);
-	new_content = ft_strjoin(tmp, "'");
-	free(tmp);
-	if (!new_content)
-		return (NULL);
-	head = add_new_token(new_content, NO_F_OR_D);
-	free(new_content);
-	if (!head)
-		return (NULL);
-	return (head);
-}
-
-void	check_syntax_error(t_token **head)
-{
-	t_token	*tmp;
-
-	if (!head || !*head)
-		return ;
-	tmp = *head;
-	while (tmp)
-	{
-		if ((tmp->token == PIPE && (!tmp->prev || !tmp->next))
-			|| (tmp->token == O_OR && (!tmp->prev || !tmp->next))
-			|| (((tmp->token == R_IN) || (tmp->token == HD)
-					|| (tmp->token == TRUNC) || (tmp->token == APPEND))
-				&& !tmp->content[1]))
-		{
-			*head = set_syntax_error(tmp);
-			return ;
-		}
-		else if (tmp->token == DIREC)
-		{
-			case_of_directory_error(&tmp);
-			return ;
-		}
-		else
-			tmp = tmp->next;
 	}
 }

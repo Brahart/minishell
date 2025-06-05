@@ -6,7 +6,7 @@
 /*   By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/30 20:47:42 by asinsard          #+#    #+#             */
-/*   Updated: 2025/05/07 19:21:19 by asinsard         ###   ########lyon.fr   */
+/*   Updated: 2025/06/05 00:09:55 by asinsard         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -15,15 +15,25 @@
 #include "list.h"
 #include <stdlib.h>
 
-void	add_space(t_token **node)
+bool	is_valid_arg(t_token *node, char *str)
 {
-	char	*res;
+	int	i;
 
-	res = ft_strjoin((*node)->content[0], " ");
-	if (!res)
-		free_parse(*node, "Malloc faile in function add_space", MEM_ALLOC);
-	free((*node)->content[0]);
-	(*node)->content[0] = res;
+	if ((node->token == S_QUOTE || node->token == EXPAND || node->error != 0
+			|| node->token == WILDCARD)
+		&& node->next && node->next->token == SPACE)
+	{
+		if (str[0] != '-' || str[1] != 'n')
+			return (true);
+		i = 2;
+		while (str[i])
+		{
+			if (str[i] != 'n')
+				return (true);
+			i++;
+		}
+	}
+	return (false);
 }
 
 void	copy_value(t_token *node, char *value, char **value_cpy)
@@ -33,8 +43,7 @@ void	copy_value(t_token *node, char *value, char **value_cpy)
 	else
 		*value_cpy = ft_strdup(value);
 	if (!*value_cpy)
-		free_parse(node,
-			"Malloc failed in function 'copy_value'", MEM_ALLOC);
+		free_parse(node);
 }
 
 char	*alloc_first_expand(char *value, char *str_to_expand, int index)

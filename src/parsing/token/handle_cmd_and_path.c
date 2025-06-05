@@ -6,12 +6,14 @@
 /*   By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/02 23:46:28 by asinsard          #+#    #+#             */
-/*   Updated: 2025/05/09 21:58:21 by asinsard         ###   ########lyon.fr   */
+/*   Updated: 2025/06/05 00:12:59 by asinsard         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "list.h"
 #include "libft.h"
+#include "structs.h"
+#include <errno.h>
 #include <unistd.h>
 
 bool	parse_path_without_env(t_token *node)
@@ -22,9 +24,9 @@ bool	parse_path_without_env(t_token *node)
 	if (!tmp_cmd)
 	{
 		free_tab(tmp_cmd);
-		free_parse(node,
-			"Malloc failed in function 'parse_path_whithout env'",
-			MEM_ALLOC);
+		free_parse(node);
+		errno = MEM_ALLOC;
+		return (false);
 	}
 	if (!tmp_cmd[0])
 	{
@@ -34,37 +36,25 @@ bool	parse_path_without_env(t_token *node)
 	if (!verif_access_exec(tmp_cmd[0], &node->error))
 	{
 		free_tab(tmp_cmd);
-		return (false);
+		return (true);
 	}
 	free_tab(tmp_cmd);
 	return (true);
 }
 
-char	*extract_path(char **envp)
+char	*extract_path(t_var *list_env)
 {
 	char	*res;
-	char	*tmp;
-	int		i;
 
-	i = 0;
-	tmp = ft_strdup("");
-	if (!tmp)
-		return (NULL);
 	res = NULL;
-	while (envp[i])
+	while (list_env)
 	{
-		if (!ft_strncmp(envp[i], "PATH=", 5))
+		if (!ft_strncmp(list_env->key, "PATH", 5))
 		{
-			res = ft_strjoin(tmp, envp[i]);
-			if (!res)
-			{
-				free(tmp);
-				return (NULL);
-			}
-			free(tmp);
+			res = list_env->value;
 			break ;
 		}
-		i++;
+		list_env = list_env->next;
 	}
 	return (res);
 }
@@ -97,21 +87,12 @@ static char	*verif_path(char **path, char *cmd, int *error)
 char	**split_the_path(char *path)
 {
 	char	**new_path;
-	char	*tmp;
-	int		i;
 
-	i = 0;
-	while (path[i] && path[i] != '=')
-		i++;
-	i += 1;
-	tmp = ft_strdup(&path[i]);
-	if (!tmp)
-		return (NULL);
-	new_path = ft_split(tmp, ':');
-	free(tmp);
-	if (!new_path)
+	new_path = ft_split(path, ':');
+	if (!new_path || !new_path[0])
 	{
 		free_tab(new_path);
+		errno = MEM_ALLOC;
 		return (NULL);
 	}
 	return (new_path);
@@ -127,7 +108,7 @@ char	*parse_cmd(char *arg, char **path, int *error, bool flag)
 	if (flag)
 	{
 		alloc_cmd_split(&split_cmd, path, arg, error);
-		if (*error == CMD_NOT_FOUND)
+		if (*error == CMD_NOT_FOUND || errno == MEM_ALLOC)
 		{
 			free_tab(path);
 			free_tab(split_cmd);

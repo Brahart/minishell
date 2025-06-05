@@ -6,11 +6,11 @@
 /*   By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/10 23:04:24 by asinsard          #+#    #+#             */
-/*   Updated: 2025/04/30 15:07:45 by asinsard         ###   ########lyon.fr   */
+/*   Updated: 2025/05/24 01:15:35 by asinsard         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "display.h"
+#include "misc/display.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,6 +52,8 @@ void	print_ast(t_tree *node, int indent)
 
 void	display_ast(t_tree *root, int debug)
 {
+	if (!root)
+		return ;
 	if (debug)
 	{
 		print_ast(root, 20);

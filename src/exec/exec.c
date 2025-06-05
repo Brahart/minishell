@@ -3,367 +3,97 @@
 /*                                                        :::      ::::::::   */
 /*   exec.c                                             :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: oelleaum <oelleaum@student.42.fr>          +#+  +:+       +#+        */
+/*   By: asinsard <asinsard@student.42lyon.fr>      +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/03 15:49:28 by oelleaum          #+#    #+#             */
-/*   Updated: 2025/05/04 19:36:34 by oelleaum         ###   ########lyon.fr   */
+/*   Updated: 2025/05/27 17:56:37 by oelleaum         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "exec.h"
-#include "builtins.h"
 #include "env_utils.h"
-#include "utils.h"
+#include "exec.h"
+#include "exec_boolops.h"
 #include "libft.h"
-#include "list.h"
-#include "signals.h"
+#include <readline/readline.h>
+#include <signals.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <readline/readline.h> // compiler avec -l readline
 
-int	builtins(char **arg, t_var **env, t_tree **ast, int origin_fds[2])
+int	builtins(char **arg, t_lists *lists)
 {
 	if (!*arg)
 		return (1);
 	else if (!ft_strncmp(arg[0], "echo", 5))
 		return (builtin_echo(arg));
 	else if (!ft_strncmp(arg[0], "cd", 3))
-		return (builtin_cd(arg, env));
+		return (builtin_cd(arg, lists->env));
 	else if (!ft_strncmp(arg[0], "pwd", 4))
-		return (builtin_pwd());
+		return (builtin_pwd(lists->env));
 	else if (!ft_strncmp(arg[0], "export", 7))
-		return (builtin_export(env, arg));
+		return (builtin_export(lists->env, arg));
 	else if (!ft_strncmp(arg[0], "unset", 6))
-		return (builtin_unset(env, arg));
+		return (builtin_unset(lists->env, arg));
 	else if (!ft_strncmp(arg[0], "env", 4))
-		return (builtin_env(env, arg));
+		return (builtin_env(lists->env, arg));
 	else if (!ft_strncmp(arg[0], "exit", 5))
-		return (builtin_exit(arg, env, ast, origin_fds));
-	else if (!ft_strncmp(arg[0], "source", 7))
-		return (builtin_source((*ast)->right->token->content[0], env));
+		return (builtin_exit(arg, lists->ast, lists));
 	else
 		return (1);
 }
 
-
-int	exec_pipe(t_tree **ast, t_var **env, t_pipe **pipes, int origin_fds[2])
+int	exec_error_cases(t_tree **ast)
 {
-	pid_t left_pid;
-	pid_t right_pid;
-	int		pipefd[2];
-	int exit_code;
+	if ((*ast)->token->error == 127 || (*ast)->token->error == 126
+		|| (*ast)->token->error == 21)
+		return (error_cmd((*ast)->token->content[0], (*ast)->token->error));
+	if ((*ast)->token->error == 5)
+	{
+		ft_putstr_fd((*ast)->token->content[0], 2);
+		return (5);
+	}
+	if ((*ast)->token->token == D_QUOTE && (*ast)->token->error == 130)
+		return (error_cmd("\"\"", 127));
+	if ((*ast)->token->token == SPACE && (*ast)->token->error == 0)
+		return (0);
+	return (0);
+}
 
-	struct sigaction sa_ignore, sa_orig;
+int	exec_ast_boolops_cases(t_tree **ast, t_lists *lists)
+{
+	if ((*ast)->token->token == O_AND || (*ast)->token->token == O_OR)
+		return (exec_boolop(ast, lists));
+	if ((*ast)->token->token == GROUP_PARENTHESIS)
+		return (exec_parenthesis(ast, lists));
+	if ((*ast)->token->token == GROUP_BOOLOP)
+		return (exec_group_boolop(ast, lists));
+	return (1);
+}
+
+int	exec_ast(t_tree **ast, t_lists *lists)
+{
+	struct sigaction	sa_ignore;
+	struct sigaction	sa_orig;
+
+	if (!*ast)
+		return (lists->exit_code);
 	sigemptyset(&sa_ignore.sa_mask);
 	sa_ignore.sa_handler = SIG_IGN;
 	sa_ignore.sa_flags = 0;
 	sigaction(SIGINT, &sa_ignore, &sa_orig);
-	add_pipe(pipefd, pipes);
-	left_pid = fork();
-	if (left_pid < 0)
+	if ((*ast)->token->token == O_AND || (*ast)->token->token == O_OR
+		|| (*ast)->token->token == GROUP_PARENTHESIS
+		|| (*ast)->token->token == GROUP_BOOLOP)
+		return (exec_ast_boolops_cases(ast, lists));
+	if ((*ast)->token->error == 2)
 	{
-		// error
+		ft_putendl_fd((*ast)->token->content[0], 2);
+		return ((*ast)->token->error);
 	}
-	if (left_pid == 0)
-	{
-		close_origin_fds(origin_fds);
-		close(pipefd[0]);
-		if ((*pipes)->next)
-		{
-			dup2((*pipes)->next->fd[0], STDIN_FILENO);
-			close((*pipes)->next->fd[0]);
-			free((*pipes)->next);
-			(*pipes)->next = NULL;
-		}
-		dup2(pipefd[1], STDOUT_FILENO);
-		close(pipefd[1]);
-		free_pipes(pipes);
-		exit_code = exec_ast(&((*ast)->left), env, origin_fds, pipes);
-		free_list(env);
-		/* printf("exec : %p\n", (*ast)->head); */
-		free_tree(&((*ast)->head));
-		exit(exit_code);
-	}
-	else
-	{
-		if ((*pipes)->next)
-		{
-			close((*pipes)->next->fd[0]);
-			free((*pipes)->next);
-			(*pipes)->next = NULL;
-		}
-		close(pipefd[1]);
-	}
-	if ((*ast)->right && (*ast)->right->token->token == PIPE)
-	{
-		//attendre avant ?
-		exit_code = exec_pipe(&((*ast)->right), env, pipes, origin_fds);
-		exit_code = wait_children(left_pid, left_pid);
-		return (exit_code);
-	}
-	else
-	{
-		right_pid = fork();
-		if (right_pid < 0)
-		{
-			//error
-		}
-		if (right_pid == 0)
-		{
-			close_origin_fds(origin_fds);
-			dup2(pipefd[0], STDIN_FILENO);
-			close(pipefd[0]);
-			free_pipes(pipes);
-			exit_code = exec_ast(&((*ast)->right), env, origin_fds, pipes);
-			free_list(env);
-			free_tree(&((*ast)->head));
-			exit(exit_code);
-		}
-		else
-		{
-			close(pipefd[0]);
-			free_pipes(pipes);
-			exit_code = wait_children(right_pid, left_pid);
-			sigaction(SIGINT, &sa_orig, NULL);
-			update_last_arg_var(env, (*ast)->token->content);
-			return(exit_code);
-		}
-	}
-	return (1);
+	if (((*ast)->token->token == R_IN || (*ast)->token->token == APPEND
+			|| (*ast)->token->token == TRUNC) || ((*ast)->token->token == PIPE)
+		|| ((*ast)->token->token == HD) || ((*ast)->token->error != 126
+			&& ((*ast)->token->token == BUILT_IN
+				|| (*ast)->token->token == CMD)))
+		return (exec_group_cmd(ast, lists));
+	return (exec_error_cases(ast));
 }
-
-/* #include <stdio.h> */
-//BUILT_IN : PARENT
-//CMD : CHILD
-int	exec_cmd(t_tree **ast, t_var **env, int origin_fds[2], t_pipe **pipes)
-{
-	char	**strings_env;
-	pid_t	pid;
-	int exit_code;
-	char *s;
-	char *tmp;
-
-	(void)pipes;
-	/* expand_cmd_sub((*ast)->token->content, env); */
-	//les builtins ne mettent pas a jour la variable _ !!
-	if ((*ast)->token->token == BUILT_IN  || !ft_strncmp((*ast)->token->content[0], "source", 7))
-	{
-		exit_code = builtins((*ast)->token->content, env, ast, origin_fds);
-		return (exit_code);
-	}
-	if (is_a_directory((*ast)->token->content[0]))
-	{
-		/* if (!ft_strncmp((*ast)->token->content[0], ".", 2)) */
-		/* { */
-		/* 	ft_putstr_fd("minishell: .: filename argument required\n.: usage: . filename [arguments]\n", 2); */
-		/* 	return(2); */
-		/* } */
-		/* if (!ft_strncmp((*ast)->token->content[0], "..", 3)) */
-		/* { */
-		/* 	ft_putstr_fd("minishell: ..: command not found\n", 2); */
-		/* 	return(127); */
-		/* } */
-		s = ft_strjoin("minishell: ", (*ast)->token->content[0]);
-		tmp = s;
-		s = ft_strjoin(s, ": Is a directory\n");
-		free(tmp);
-		ft_putstr_fd(s, 2);
-		free(s);
-		return (126);
-	}
-
-	if ((*ast)->token->token == CMD)
-	{
-		pid = fork();
-		if (pid == -1)
-			return(-1);
-		if (pid == 0)
-		{
-    	setup_child_signals();
-			if (origin_fds[0] > 2 || origin_fds[1] > 2)
-				close_origin_fds(origin_fds);
-			strings_env = lst_to_array(env);
-			execve((*ast)->token->content[0], (*ast)->token->content,
-				strings_env);
-			perror("execve");
-			free_array(strings_env);
-			free_tree(&((*ast)->head));
-			free_list(env);
-			exit(1);
-		}
-		else
-		{
-			set_signals(1);
-			exit_code = wait_children(pid, pid);
-			update_env(env);
-			update_last_arg_var(env, (*ast)->token->content);
-			setup_parent_signals();
-      rl_on_new_line();
-			return (exit_code);
-		}
-	}
-	return (1); //on ne devrait pas arriver ici
-}
-
-int print_error_is_a_directory(char *file)
-{
-	char *s;
-	char *tmp;
-
-	s = ft_strjoin("minishell: ", file);
-	tmp = s;
-	s = ft_strjoin(s, ": Is a directory\n");
-	free(tmp);
-	ft_putstr_fd(s, 2);
-	free(s);
-	return (1);
-}
-
-int print_perm_error(char *file)
-{
-	char *s;
-	char *tmp;
-
-	s = ft_strjoin("minishell: ", file);
-	tmp = s;
-	s = ft_strjoin(s, ": Permission denied\n");
-	free(tmp);
-	ft_putstr_fd(s, 2);
-	free(s);
-	return (1);
-}
-
-int redirect_stdio(t_tree **ast, t_var **env, int origin_fds[2], t_pipe **pipes)
-{
-	t_tree *left;
-	t_tree *right;
-	int exit_code;
-
-	left = (*ast)->left;
-	right = (*ast)->right;
-	//doute pour ce if, on devrait le faire au parsing ?
-	//dans tous les cas, avec juste un input "<" je trouve un synbole aleatoire dans content[1]
-	if (!(*ast)->token->content[1])
-		return(print_error_file_opening("", "syntax error\n", 2));
-	exit_code = file_check((*ast)->token->content[1], (*ast)->token->token, (*ast)->token->error);
-	if (exit_code != 0)
-		return(exit_code);
-	exit_code = open_dup2_close((*ast)->token->content[1], (*ast)->token->token);
-	if (exit_code == -1)
-		return (-1);//on stop la chaine de redirections
-	if (left && (left->token->token == R_IN || left->token->token == APPEND || left->token->token == TRUNC || left->token->token == HD))
-		exit_code = redirect_stdio(&left, env, origin_fds, pipes);
-	if (exit_code == 0 && right && (right->token->token == R_IN || right->token->token == APPEND || right->token->token == TRUNC || right->token->token == HD))
-		exit_code = redirect_stdio(&right, env, origin_fds, pipes);
-	if (exit_code == 0 && left && (left->token->token == CMD || left->token->token == BUILT_IN))
-		exit_code = exec_cmd(&left, env, origin_fds, pipes);
-	if (exit_code == 0 && right && (right->token->token == CMD || right->token->token == BUILT_IN))
-		exit_code = exec_cmd(&right, env, origin_fds, pipes);
-	return (exit_code);
-}
-
-int	exec_ast(t_tree **ast, t_var **env, int origin_fds[2], t_pipe **pipes)
-{
-  int exit_code;
-
-  exit_code = 0;
-  if (!*ast)
-  	return(127);
-  if ((*ast)->token->error == 2)
-  {
-  	ft_putendl_fd((*ast)->token->content[0], 2);
-  	return ((*ast)->token->error);
-  }
-	if ((*ast)->token->token == R_IN || (*ast)->token->token == APPEND || (*ast)->token->token == TRUNC)
-		return(redirect_stdio(ast, env, origin_fds, pipes));
-	if ((*ast)->token->token == PIPE)
-		return (exec_pipe(ast, env, pipes, origin_fds));
-	if ((*ast)->token->token == BUILT_IN || (*ast)->token->token == CMD  || !ft_strncmp((*ast)->token->content[0], "source", 7))
-	{
-		exit_code = exec_cmd(ast, env, origin_fds, pipes);
-		return (exit_code);
-	}
-	//errors
-	/* if (!ft_strncmp((*ast)->token->content[0], ":", 2)) */
-	/* 		return(0); */
-	if ((*ast)->token->error == 127 || (*ast)->token->error == 126 || (*ast)->token->error == 21)
-		return (error_cmd((*ast)->token->content[0], (*ast)->token->error));
-	//Ultrabonus
-		//un token Alias
-	  //un token shell_func
-	  //un token substitution cmd ?
-			//on ne l'expand pas jusqu'au dernier moment, et on execute le contenu des parentheses 
-	return (exit_code);
-}
-
-//modifs pour le ctrl dans un pipe :
-//
-//il faut avoir un check is_in_pipe dans cmd : pour gerer un cat tout seul
-//il faut deplacer les ajouts de set sig etc faites dans cmd dans exec_pipe
-//il faut modifier la fonction wait_children pour qu'il recupere correctement le signal
-//https://chat.deepseek.com/a/chat/s/a6fb8416-77db-418a-9c33-91607fa40c13
-
-//Gros debuggage 
-//
-//implementer le nouveau free de l'arbre 
-//corriger si on fait un ctrl D dans le prompt : tout free
-//idem pour exit : tout free
-//
-//Parsing ?
-//whoami | cat | > file1 | uname
-//doit afficher Linux et pas cmd not found !
-//
-					//TESTS
-//
-//PIPES
-//
-//whoami OK
-//whoami | cat OK
-//whoami | cat | cat OK
-//whoami | cat | cat | cat OK
-//
-//REDIRS OUT
-//whoami > file1 OK
-//not_existing_cmd > file1 OK
-//whoami > file1 > file2 OK
-//whoami > file1 > file2 > file3 > file4 OK
-//whoami >> file1 OK
-//whoami > file1 >> file2 OK
-//whoami >> file1 > file2 > file3
-//whoami > file1 > file2 >> file3 KO
-//
-//REIDRS IN
-//< file1 whoami KO
-//< file1 cat : boucle infinie KO
-//
-//PIPE + redirs out
-//whoami | cat | cat > file1 | cat > file1 > file2 | cat KO
-//
-//PIPE + redirs in
-//TODO
-
-//Mettre 1024 en limite de pipes !!
-//
-//gros BUG !
-/* [Minishell]$ whoami | file1 */
-/* mimishell: file1: Permission denied */
-/* [Minishell]$ oelleaum */
-/* mimishell: oelleaum: command not found */
-/* [Minishell]$ 2004h[Minishell]$ */
-
-// exec_ast.c
-/* int exec_ast(t_tree **ast, t_var **env, t_pipe **pipes); */
-/* int boolean_operators(t_tree **ast, t_var **env, t_pipe **pipes); */
-/* int redirect_stdio(t_tree **ast, t_var **env, t_pipe **pipes); */
-/* int exec_cmd(t_tree **ast, t_var **env, t_pipe **pipes); */
-
-// pipe_utils.c
-/* int get_fds_for_pipe(t_tree *ast); */
-/* int add_pipe(int fd[2], t_pipe **pipes); */
-/* int free_pipes(t_pipe **pipes); */
-
-// exec_utils.c
-/* int expand_variables(t_tree **ast); */
-/* int find_expands(t_tree *ast) */
-/* int free_lists_and_exit(t_var **env, t_tree **ast, t_pipe **pipes) */
-

@@ -27,13 +27,15 @@ typedef struct s_token
 	int				error;
 	struct s_token	*next;
 	struct s_token	*prev;
+	struct s_token	*group;
 	char			**content;
+	char			*curr_dir;
 	enum e_type		token;
 	int				priority;
-	bool			seq;
 }	t_token;
 
-void					add_back(t_token **head, char *str);
-void					free_parse(t_token *list, const char *str, int error);
+/* ----------------------LIST---------------------- */
+bool					add_back(t_token **head, char *str);
+void					free_parse(t_token *list);
 
 #endif

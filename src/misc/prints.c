@@ -6,64 +6,29 @@
 /*   By: oelleaum <oelleaum@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2025/04/11 17:12:20 by oelleaum          #+#    #+#             */
-/*   Updated: 2025/04/20 17:31:03 by oelleaum         ###   ########lyon.fr   */
+/*   Updated: 2025/05/27 18:04:22 by oelleaum         ###   ########lyon.fr   */
 /*                                                                            */
 /* ************************************************************************** */
 
+#include "display.h"
 #include "libft.h"
 #include "structs.h"
+#include <errno.h>
 #include <stdio.h>
-
-int	print_array(char **array)
-{
-	int		i;
-	char	*output;
-
-	i = 0;
-	while (array[i])
-	{
-		output = ft_strjoin(array[i], "\n");
-		ft_putstr_fd(output, 1);
-		free(output);
-		i++;
-	}
-	return (0);
-}
 
 int	print_sorted_env(t_var **env)
 {
 	t_var	*tmp;
-	char	*s;
-	char	*temp;
+	int		exit_code;
 
 	tmp = *env;
 	while (tmp)
 	{
-		/* printf("key = %s | exported = %d\n", tmp->key, tmp->exported); */
-		//cette condition casse tout !
 		if (tmp->exported == 1)
 		{
-			s = ft_strjoin("declare -x ", tmp->key);
-			temp = s;
-			if (tmp->value)
-			{
-				s = ft_strjoin(s, "=\"");
-				free(temp);
-				temp = s;
-				s = ft_strjoin(s, tmp->value);
-				free(temp);
-				temp = s;
-				s = ft_strjoin(s, "\"\n");
-				free(temp);
-				temp = s;
-			}
-			else 
-			{
-				s = ft_strjoin(s, "=\"\"\n");
-				free(temp);
-			}
-			ft_putstr_fd(s, 1);
-			free(s);
+			exit_code = print_export_line(tmp);
+			if (exit_code != 0)
+				return (exit_code);
 		}
 		tmp = tmp->next;
 	}
@@ -86,25 +51,25 @@ int	print_var(t_var **env)
 	return (0);
 }
 
-int print_env(t_var **env)
+int	print_env(t_var **env)
 {
-    t_var *tmp;
+	t_var	*tmp;
 
-    tmp = *env;
-    while (tmp)
-    {
-    	if (tmp->env == 1)
-    	{
-        if (tmp->key)
-            ft_putstr_fd(tmp->key, 1);
-        if (tmp->value) //Si on fait VAR= on ft_strdup("")
-        {
-            ft_putstr_fd("=", 1);
-            ft_putstr_fd(tmp->value, 1);
-        }
-        ft_putstr_fd("\n", 1);
-    	}
-      tmp = tmp->next;
-    }
-    return (0);
+	tmp = *env;
+	while (tmp)
+	{
+		if (tmp->env == 1)
+		{
+			if (tmp->key)
+				ft_putstr_fd(tmp->key, 1);
+			if (tmp->value)
+			{
+				ft_putstr_fd("=", 1);
+				ft_putstr_fd(tmp->value, 1);
+			}
+			ft_putstr_fd("\n", 1);
+		}
+		tmp = tmp->next;
+	}
+	return (0);
 }
